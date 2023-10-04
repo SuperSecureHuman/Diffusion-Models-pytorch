@@ -27,7 +27,9 @@ class Diffusion:
         self.device = device
 
     def prepare_noise_schedule(self):
-        return torch.linspace(self.beta_start, self.beta_end, self.noise_steps)
+        t = torch.linspace(0, 1, self.noise_steps)
+        schedule = 0.5 * (1 + torch.cos(t * torch.pi)) * (self.beta_end - self.beta_start) + self.beta_start
+        return schedule
 
     def noise_images(self, x, t):
         sqrt_alpha_hat = torch.sqrt(self.alpha_hat[t])[:, None, None, None]
@@ -73,8 +75,10 @@ def train(args):
     diffusion = Diffusion(img_size=args.image_size, device=device)
     logger = SummaryWriter(os.path.join("runs", args.run_name))
     l = len(dataloader)
-    ema = EMA(0.995)
-    ema_model = copy.deepcopy(model).eval().requires_grad_(False)
+    model = torch.jit.script(model)
+    #ema = EMA(0.995)
+    #ema_model = copy.deepcopy(model).eval().requires_grad_(False)
+    #model = torch.jit.script(model)
 
     for epoch in range(args.epochs):
         logging.info(f"Starting epoch {epoch}:")
@@ -92,7 +96,7 @@ def train(args):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            ema.step_ema(ema_model, model)
+            #ema.step_ema(ema_model, model)
 
             pbar.set_postfix(MSE=loss.item())
             logger.add_scalar("MSE", loss.item(), global_step=epoch * l + i)
@@ -100,13 +104,13 @@ def train(args):
         if epoch % 10 == 0:
             labels = torch.arange(args.num_classes).long().to(device)
             sampled_images = diffusion.sample(model, n=len(labels), labels=labels)
-            ema_sampled_images = diffusion.sample(ema_model, n=len(labels), labels=labels)
+            #ema_sampled_images = diffusion.sample(ema_model, n=len(labels), labels=labels)
             plot_images(sampled_images)
             save_images(sampled_images, os.path.join("results", args.run_name, f"{epoch}.jpg"))
-            save_images(ema_sampled_images, os.path.join("results", args.run_name, f"{epoch}_ema.jpg"))
+            #save_images(ema_sampled_images, os.path.join("results", args.run_name, f"{epoch}_ema.jpg"))
             torch.save(model.state_dict(), os.path.join("models", args.run_name, f"ckpt.pt"))
-            torch.save(ema_model.state_dict(), os.path.join("models", args.run_name, f"ema_ckpt.pt"))
-            torch.save(optimizer.state_dict(), os.path.join("models", args.run_name, f"optim.pt"))
+            #torch.save(ema_model.state_dict(), os.path.join("models", args.run_name, f"ema_ckpt.pt"))
+
 
 
 def launch():
@@ -114,14 +118,15 @@ def launch():
     parser = argparse.ArgumentParser()
     args = parser.parse_args()
     args.run_name = "DDPM_conditional"
-    args.epochs = 300
-    args.batch_size = 14
+    args.epochs = 10
+    args.batch_size = 1
     args.image_size = 64
-    args.num_classes = 10
-    args.dataset_path = r"C:\Users\dome\datasets\cifar10\cifar10-64\train"
+    args.num_classes = 2
+    args.dataset_path = r"/home/venom/Downloads/archive/cifar10-64/test"
     args.device = "cuda"
     args.lr = 3e-4
     train(args)
+
 
 
 if __name__ == '__main__':
