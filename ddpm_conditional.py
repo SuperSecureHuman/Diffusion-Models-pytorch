@@ -75,10 +75,21 @@ def train(args):
     diffusion = Diffusion(img_size=args.image_size, device=device)
     logger = SummaryWriter(os.path.join("runs", args.run_name))
     l = len(dataloader)
-    model = torch.jit.script(model)
+    #model = torch.jit.trace(model)
     #ema = EMA(0.995)
     #ema_model = copy.deepcopy(model).eval().requires_grad_(False)
     #model = torch.jit.script(model)
+
+### Tracing Experiments
+    #sample_images, sample_labels = next(iter(dataloader))
+    #sample_labels = sample_labels.to('cuda')
+    #sample_images = sample_images.to('cuda')
+    #sample_t = diffusion.sample_timesteps(sample_images.shape[0]).to('cuda')
+    #sample_x_t, _ = diffusion.noise_images(sample_images, sample_t)
+    #traced_model = torch.jit.trace(model, (sample_x_t, sample_t, sample_labels))
+    
+    traced_model = torch.compile(model, mode='reduce-overhead')
+### Tracing
 
     for epoch in range(args.epochs):
         logging.info(f"Starting epoch {epoch}:")
@@ -90,7 +101,7 @@ def train(args):
             x_t, noise = diffusion.noise_images(images, t)
             if np.random.random() < 0.1:
                 labels = None
-            predicted_noise = model(x_t, t, labels)
+            predicted_noise = traced_model(x_t, t, labels)
             loss = mse(noise, predicted_noise)
 
             optimizer.zero_grad()
@@ -103,12 +114,12 @@ def train(args):
 
         if epoch % 10 == 0:
             labels = torch.arange(args.num_classes).long().to(device)
-            sampled_images = diffusion.sample(model, n=len(labels), labels=labels)
+            sampled_images = diffusion.sample(traced_model, n=len(labels), labels=labels)
             #ema_sampled_images = diffusion.sample(ema_model, n=len(labels), labels=labels)
             plot_images(sampled_images)
             save_images(sampled_images, os.path.join("results", args.run_name, f"{epoch}.jpg"))
             #save_images(ema_sampled_images, os.path.join("results", args.run_name, f"{epoch}_ema.jpg"))
-            torch.save(model.state_dict(), os.path.join("models", args.run_name, f"ckpt.pt"))
+            torch.save(traced_model.state_dict(), os.path.join("models", args.run_name, f"ckpt.pt"))
             #torch.save(ema_model.state_dict(), os.path.join("models", args.run_name, f"ema_ckpt.pt"))
 
 
