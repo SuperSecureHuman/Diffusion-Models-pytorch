@@ -9,7 +9,7 @@ from utils import *
 from modules import UNet_conditional, EMA
 import logging
 from torch.utils.tensorboard import SummaryWriter
-
+torch.autograd.set_detect_anomaly(True)
 logging.basicConfig(format="%(asctime)s - %(levelname)s: %(message)s", level=logging.INFO, datefmt="%I:%M:%S")
 
 
@@ -105,7 +105,7 @@ def train(args):
             loss = mse(noise, predicted_noise)
 
             optimizer.zero_grad()
-            loss.backward()
+            loss.backward(retain_graph=True)
             optimizer.step()
             #ema.step_ema(ema_model, model)
 
